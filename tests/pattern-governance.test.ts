@@ -112,3 +112,32 @@ test('audit chain serializes each tenant for the full transaction', () => {
   assert.ok(audit.includes('pg_advisory_xact_lock(hashtextextended($1, 0))'));
   assert.ok(audit.includes('entire transaction'));
 });
+
+
+test('audit chain exposes deterministic integrity verification', () => {
+  const audit = fs.readFileSync(new URL('../src/infra/audit.ts', import.meta.url), 'utf8');
+  for (const marker of [
+    'export async function verifyAuditChain',
+    'pg_advisory_xact_lock(hashtextextended($1, 0))',
+    'tenant mismatch',
+    'sequence is not strictly increasing',
+    'previous_hash does not match the preceding event hash',
+    'stored hash does not match the canonical event payload',
+    'const expectedHash=auditHash',
+    'return {valid:true,tenantId,eventCount',
+  ]) assert.ok(audit.includes(marker), `missing audit integrity marker: ${marker}`);
+});
+
+test('audit append and verification share one canonical hash function', () => {
+  const audit = fs.readFileSync(new URL('../src/infra/audit.ts', import.meta.url), 'utf8');
+  assert.equal((audit.match(/function auditHash\(/g) || []).length, 1);
+  assert.equal((audit.match(/JSON\.stringify\(/g) || []).length, 1);
+  assert.ok(audit.includes('previousHash:e.previousHash'));
+  assert.ok(audit.includes('previousHash:event.previous_hash'));
+});
+
+test('audit verification does not require contiguous global sequence numbers', () => {
+  const audit = fs.readFileSync(new URL('../src/infra/audit.ts', import.meta.url), 'utf8');
+  assert.ok(audit.includes('event.sequence<=previousSequence'));
+  assert.ok(!audit.includes('event.sequence!==previousSequence+1'));
+});
