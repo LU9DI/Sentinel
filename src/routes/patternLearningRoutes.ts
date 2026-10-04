@@ -92,7 +92,7 @@ router.post('/candidates/:id/promote', requirePermission('risk:write'), async (r
     const version = Number(existing.rows[0]?.version || 0) + 1;
     const pattern = candidateToPattern(row.rows[0], crypto.randomUUID(), version);
     await tx.query(
-      'INSERT INTO pattern_definitions(id,tenant_id,name,version,sequence,min_window_ms,preferred_window_ms,max_window_ms,weights,geo,min_confidence,enabled) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,false)',
+      'INSERT INTO pattern_definitions(id,tenant_id,name,version,sequence,min_window_ms,preferred_window_ms,max_window_ms,weights,geo,min_confidence,enabled,origin_candidate_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,false,$12)',
       [pattern.id, req.tenantId, pattern.name, pattern.version, pattern.sequence, pattern.minWindowMs, pattern.preferredWindowMs, pattern.maxWindowMs, pattern.weights, pattern.geo, pattern.minConfidence],
     );
     await tx.query('UPDATE pattern_candidates SET status=\'promoted\',updated_at=now() WHERE id=$1 AND tenant_id=$2', [id, req.tenantId]);
@@ -114,14 +114,15 @@ router.post('/definitions/:id/activate', requirePermission('rules:write'), async
   const id = String(req.params.id);
   const result = await withTransaction(async tx => {
     const definitions = await tx.query(
-      'SELECT id,name,version,enabled FROM pattern_definitions WHERE tenant_id=$1 AND name=(SELECT name FROM pattern_definitions WHERE id=$2 AND tenant_id=$1) ORDER BY id FOR UPDATE',
+      'SELECT pd.id,pd.name,pd.version,pd.enabled,pd.origin_candidate_id AS "originCandidateId",pc.status AS "candidateStatus" FROM pattern_definitions pd LEFT JOIN pattern_candidates pc ON pc.id=pd.origin_candidate_id AND pc.tenant_id=pd.tenant_id WHERE pd.tenant_id=$1 AND pd.name=(SELECT name FROM pattern_definitions WHERE id=$2 AND tenant_id=$1) ORDER BY pd.id FOR UPDATE',
       [req.tenantId, id],
     );
     const row = definitions.rows.find((candidate) => candidate.id === id);
     if (!row) return null;
     if (row.enabled) return row;
+    if (row.originCandidateId && row.candidateStatus !== 'promoted') throw new Error('pattern candidate must be promoted before activation');
     await tx.query('UPDATE pattern_definitions SET enabled=false WHERE tenant_id=$1 AND name=$2', [req.tenantId, row.name]);
-    const updated = await tx.query('UPDATE pattern_definitions SET enabled=true WHERE id=$1 AND tenant_id=$2 RETURNING id,name,version,enabled', [id, req.tenantId]);
+    const updated = await tx.query('UPDATE pattern_definitions SET enabled=true,activated_by=$3,activated_at=now() WHERE id=$1 AND tenant_id=$2 RETURNING id,name,version,enabled,activated_by AS "activatedBy",activated_at AS "activatedAt",origin_candidate_id AS "originCandidateId"', [id, req.tenantId, req.actorId]);
     await appendAudit(tx, {
       tenantId: req.tenantId!,
       actorId: req.actorId,
