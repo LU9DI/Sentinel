@@ -128,7 +128,7 @@ router.post('/definitions/:id/activate', requirePermission('rules:write'), async
       action: 'pattern_definition.activated',
       resourceType: 'pattern_definition',
       resourceId: id,
-      metadata: { version: row.rows[0].version, explicitActivation: true },
+      metadata: { version: row.version, explicitActivation: true },
     });
     return updated.rows[0];
   });
