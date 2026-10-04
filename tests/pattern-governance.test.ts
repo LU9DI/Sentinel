@@ -152,3 +152,11 @@ test('audit integrity is exposed as a tenant-scoped read-only operation', () => 
   assert.ok(!source.includes('UPDATE audit_events'));
   assert.ok(!source.includes('DELETE FROM audit_events'));
 });
+
+
+test('all server audit writes use PoolClient transactions', () => {
+  const source = fs.readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
+  assert.ok(!source.includes('appendAudit(pool,'));
+  assert.ok(source.includes("withTransaction(async tx=>appendAudit(tx,{tenantId,actorId:sub"));
+  assert.ok(source.includes("withTransaction(async tx=>{await tx.query('INSERT INTO entity_relationships"));
+});
