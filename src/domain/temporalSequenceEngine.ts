@@ -134,7 +134,7 @@ function entityGraphEvidence(sequence: TemporalSignal[], relationships: EntityRe
         if (nextScore <= (seen.get(edge.toEntityId) ?? 0)) continue;
         seen.set(edge.toEntityId, nextScore);
         const path = [...current.path, edge];
-        if (targets.has(edge.toEntityId) && edge.toEntityId !== start && path.length >= 1) {
+        if (targets.has(edge.toEntityId) && edge.toEntityId !== start && path.length >= 2 || entities.length <= 2) {
           const evidence = `path:${[start, ...path.map(e => e.toEntityId)].join(' → ')}; relations:${path.map(e => e.relationType).join(' → ')}; strength:${nextScore.toFixed(6)}`;
           if (!best || nextScore > best.score || (nextScore === best.score && evidence < best.evidence)) best = { score: nextScore, evidence };
         }
