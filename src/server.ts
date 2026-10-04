@@ -16,7 +16,8 @@ import { semanticKey, semanticSimilarity } from './domain/semanticDedup.js';
 import { evolveRisk, shouldEscalate } from './domain/riskEvolution.js';
 import { enqueueOutbox } from './infra/outbox.js';
 import { normalizeRelationship } from './domain/entityGraph.js';
-import { discoverPatternCandidates, detectVolumeAnomalies, candidateToPattern } from './domain/patternLearning.js';
+import { discoverPatternCandidates, detectVolumeAnomalies } from './domain/patternLearning.js';
+import patternLearningRouter from './routes/patternLearningRoutes.js';
 import { generatePredictiveSignals, PREDICTIVE_ALGORITHM_VERSION } from './domain/predictiveRisk.js';
 
 const app=express();
@@ -25,6 +26,7 @@ app.use(express.json({limit:'1mb'}));
 app.use(rateLimit({windowMs:60_000,max:300,standardHeaders:true,legacyHeaders:false}));
 
 app.get('/api/health',(_,res)=>res.json({ok:true,service:'horus-sentinel-ai'}));
+app.use('/api/pattern-learning', patternLearningRouter);
 
 app.post('/api/auth/token',async(req,res)=>{
   try{
