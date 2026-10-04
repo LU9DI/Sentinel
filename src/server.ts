@@ -47,7 +47,7 @@ app.post('/api/signals',requireAuth,requireTenant,requirePermission('signals:wri
     const lon=req.body?.lon==null?null:boundedNumber(req.body.lon,-180,180,'lon');
     const entityIds=Array.isArray(req.body?.entityIds)?req.body.entityIds.map(String).slice(0,100):[];
     const result=await withTransaction(async tx=>{
-      if(!(await claimIdempotency(tx,req.tenantId,key)))return {duplicate:true,correlations:0};
+      if(!(await claimIdempotency(tx,req.tenantId!,key)))return {duplicate:true,correlations:0};
       await tx.query('INSERT INTO signals(id,tenant_id,type,severity,source,payload,entity_ids,lat,lon,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[id,req.tenantId,type,severity,String(req.body?.source||'unknown'),req.body?.payload||{},entityIds,lat,lon,occurredAt]);
       await tx.query('INSERT INTO semantic_fingerprints(id,tenant_id,signal_id,fingerprint) VALUES($1,$2,$3,$4)',[crypto.randomUUID(),req.tenantId,id,semanticKey({type,entityIds,lat,lon,occurredAt:occurredAt.toISOString()})]);
       const recent=(await tx.query('SELECT id,tenant_id AS "tenantId",type,severity,entity_ids AS "entityIds",lat,lon,occurred_at AS "occurredAt" FROM signals WHERE tenant_id=$1 AND occurred_at BETWEEN $2::timestamptz-interval \'30 minutes\' AND $2::timestamptz+interval \'30 minutes\' ORDER BY occurred_at,id',[req.tenantId,occurredAt])).rows;
