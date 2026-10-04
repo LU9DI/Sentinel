@@ -1,7 +1,7 @@
 import type {Request,Response,NextFunction} from 'express';
 import type {AuthClaims} from '../infra/auth.js';
 
-export type TenantRequest=Request & {tenantId:string;actorId?:string;actorRole?:string;auth?:AuthClaims};
+export type TenantRequest=Request & {tenantId?:string;actorId?:string;actorRole?:string;auth?:AuthClaims};
 
 export function requireTenant(req:Request,res:Response,next:NextFunction){
   const typed=req as TenantRequest;
