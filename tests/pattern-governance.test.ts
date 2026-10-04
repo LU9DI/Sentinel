@@ -18,3 +18,14 @@ test('pattern learning routes are mounted', () => {
   assert.ok(source.includes("app.use('/api/pattern-learning', patternLearningRouter)"));
   assert.ok(source.includes("import patternLearningRouter from './routes/patternLearningRoutes.js'"));
 });
+
+
+test('database governance contains tenant-safe pattern invariants', () => {
+  const source = fs.readFileSync(new URL('../src/infra/db.ts', import.meta.url), 'utf8');
+  for (const marker of [
+    "status IN ('pending','review','approved','rejected','promoted')",
+    'pattern_definitions_tenant_name_version_uq',
+    'pattern_definitions_one_active_name_uq',
+    'pattern_candidates_reviewer_tenant_fk',
+  ]) assert.ok(source.includes(marker), `missing database governance marker: ${marker}`);
+});
