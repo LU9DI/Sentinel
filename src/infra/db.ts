@@ -160,6 +160,18 @@ export async function migrate(){
         RETURN NEW;
       END;
       $func$ LANGUAGE plpgsql`,
+    `CREATE OR REPLACE FUNCTION guard_pattern_activation()
+      RETURNS trigger AS $func$
+      BEGIN
+        IF NEW.enabled = true AND OLD.enabled = false
+          AND current_setting('sentinel.pattern_activation', true) IS DISTINCT FROM 'true' THEN
+          RAISE EXCEPTION 'pattern activation requires the governed activation transaction';
+        END IF;
+        RETURN NEW;
+      END;
+      $func$ LANGUAGE plpgsql`,
+    `DROP TRIGGER IF EXISTS pattern_definitions_activation_guard_trg ON pattern_definitions`,
+    `CREATE TRIGGER pattern_definitions_activation_guard_trg BEFORE UPDATE ON pattern_definitions FOR EACH ROW EXECUTE FUNCTION guard_pattern_activation()`,
     `DROP TRIGGER IF EXISTS pattern_definitions_active_immutability_trg ON pattern_definitions`,
     `CREATE TRIGGER pattern_definitions_active_immutability_trg BEFORE UPDATE ON pattern_definitions FOR EACH ROW EXECUTE FUNCTION prevent_active_pattern_mutation()`,
     `DROP TRIGGER IF EXISTS pattern_definitions_active_delete_trg ON pattern_definitions`,
