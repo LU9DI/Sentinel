@@ -27,6 +27,9 @@ test('database governance contains tenant-safe pattern invariants', () => {
     'pattern_definitions_tenant_name_version_uq',
     'pattern_definitions_one_active_name_uq',
     'pattern_candidates_reviewer_tenant_fk',
+    'origin_candidate_id',
+    'pattern_definitions_origin_candidate_tenant_fk',
+    'pattern_definitions_activated_by_tenant_fk',
   ]) assert.ok(source.includes(marker), `missing database governance marker: ${marker}`);
 });
 
@@ -40,4 +43,12 @@ test('activation serializes versions by tenant and pattern name', () => {
 test('promotion serializes version allocation for the same tenant and pattern name', () => {
   const source = fs.readFileSync(new URL('../src/routes/patternLearningRoutes.ts', import.meta.url), 'utf8');
   assert.ok(source.includes("ORDER BY version DESC FOR UPDATE"));
+});
+
+
+test('activation requires promoted lineage and records operational actor', () => {
+  const source = fs.readFileSync(new URL('../src/routes/patternLearningRoutes.ts', import.meta.url), 'utf8');
+  assert.ok(source.includes("candidateStatus !== 'promoted'"));
+  assert.ok(source.includes("activated_by=$3,activated_at=now()"));
+  assert.ok(source.includes("origin_candidate_id"));
 });
