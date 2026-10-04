@@ -86,7 +86,7 @@ router.post('/candidates/:id/promote', requirePermission('risk:write'), async (r
     if (!row.rowCount) return null;
     if (row.rows[0].status !== 'approved') throw new Error('candidate must be approved before promotion');
     const existing = await tx.query(
-      'SELECT id,version,enabled FROM pattern_definitions WHERE tenant_id=$1 AND name=$2 ORDER BY version DESC LIMIT 1',
+      'SELECT id,version,enabled FROM pattern_definitions WHERE tenant_id=$1 AND name=$2 ORDER BY version DESC FOR UPDATE',
       [req.tenantId, row.rows[0].name],
     );
     const version = Number(existing.rows[0]?.version || 0) + 1;
@@ -113,13 +113,14 @@ router.post('/candidates/:id/promote', requirePermission('risk:write'), async (r
 router.post('/definitions/:id/activate', requirePermission('rules:write'), async (req: TenantRequest, res) => {
   const id = String(req.params.id);
   const result = await withTransaction(async tx => {
-    const row = await tx.query(
-      'SELECT id,name,version,enabled FROM pattern_definitions WHERE id=$1 AND tenant_id=$2 FOR UPDATE',
-      [id, req.tenantId],
+    const definitions = await tx.query(
+      'SELECT id,name,version,enabled FROM pattern_definitions WHERE tenant_id=$1 AND name=(SELECT name FROM pattern_definitions WHERE id=$2 AND tenant_id=$1) ORDER BY id FOR UPDATE',
+      [req.tenantId, id],
     );
-    if (!row.rowCount) return null;
-    if (row.rows[0].enabled) return row.rows[0];
-    await tx.query('UPDATE pattern_definitions SET enabled=false WHERE tenant_id=$1 AND id<>$2 AND name=$3', [req.tenantId, id, row.rows[0].name]);
+    const row = definitions.rows.find((candidate) => candidate.id === id);
+    if (!row) return null;
+    if (row.enabled) return row;
+    await tx.query('UPDATE pattern_definitions SET enabled=false WHERE tenant_id=$1 AND name=$2', [req.tenantId, row.name]);
     const updated = await tx.query('UPDATE pattern_definitions SET enabled=true WHERE id=$1 AND tenant_id=$2 RETURNING id,name,version,enabled', [id, req.tenantId]);
     await appendAudit(tx, {
       tenantId: req.tenantId!,
