@@ -103,3 +103,12 @@ test('activation audit is part of the governed activation transaction', () => {
   assert.ok(activation.includes('await appendAudit(tx'));
   assert.ok(activation.includes('transition:'));
 });
+
+
+test('audit chain serializes each tenant for the full transaction', () => {
+  const audit = fs.readFileSync(new URL('../src/infra/audit.ts', import.meta.url), 'utf8');
+  assert.ok(audit.includes("import type {PoolClient} from 'pg'"));
+  assert.ok(audit.includes('appendAudit(db:PoolClient'));
+  assert.ok(audit.includes('pg_advisory_xact_lock(hashtextextended($1, 0))'));
+  assert.ok(audit.includes('entire transaction'));
+});
