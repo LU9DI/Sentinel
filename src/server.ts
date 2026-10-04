@@ -52,7 +52,7 @@ app.post('/api/auth/token',async(req,res)=>{
     const rawPermissions=membership.rows[0].permissions;
     const permissions=Array.isArray(rawPermissions)?rawPermissions.map(String):[];
     const claims=claimsFromMembership({sub,tenantId,membership:{role:String(membership.rows[0].role),permissions}});
-    await appendAudit(pool,{tenantId,actorId:sub,action:'auth.token_issued',resourceType:'user',resourceId:sub,metadata:{role:claims.role,permissionCount:claims.permissions.length}});
+    await withTransaction(async tx=>appendAudit(tx,{tenantId,actorId:sub,action:'auth.token_issued',resourceType:'user',resourceId:sub,metadata:{role:claims.role,permissionCount:claims.permissions.length}}));
     res.json({token:signToken(claims)});
   }catch(e){res.status(503).json({error:e instanceof Error?e.message:'authentication unavailable'});}
 });
@@ -125,7 +125,7 @@ app.get('/api/correlations',requireAuth,requireTenant,requirePermission('correla
 });
 
 app.post('/api/entities/relationships',requireAuth,requireTenant,requirePermission('signals:write'),async(req:TenantRequest,res)=>{
-  try{const relationship=normalizeRelationship({...req.body,tenantId:req.tenantId!});const id=crypto.randomUUID();await pool.query('INSERT INTO entity_relationships(id,tenant_id,from_entity_id,to_entity_id,relation_type,strength,valid_from,valid_to) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id,req.tenantId,relationship.fromEntityId,relationship.toEntityId,relationship.relationType,relationship.strength,relationship.validFrom??null,relationship.validTo??null]);await appendAudit(pool,{tenantId:req.tenantId!,actorId:req.actorId,action:'entity_relationship.created',resourceType:'entity_relationship',resourceId:id,metadata:relationship});res.status(201).json({id,...relationship});}
+  try{const relationship=normalizeRelationship({...req.body,tenantId:req.tenantId!});const id=crypto.randomUUID();await withTransaction(async tx=>{await tx.query('INSERT INTO entity_relationships(id,tenant_id,from_entity_id,to_entity_id,relation_type,strength,valid_from,valid_to) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id,req.tenantId,relationship.fromEntityId,relationship.toEntityId,relationship.relationType,relationship.strength,relationship.validFrom??null,relationship.validTo??null]);await appendAudit(tx,{tenantId:req.tenantId!,actorId:req.actorId,action:'entity_relationship.created',resourceType:'entity_relationship',resourceId:id,metadata:relationship});});res.status(201).json({id,...relationship});}
   catch(e){res.status(400).json({error:e instanceof Error?e.message:'invalid relationship'});}
 });
 
