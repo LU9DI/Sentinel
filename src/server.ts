@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { migrate, pool, withTransaction } from './infra/db.js';
-import { requireAuth, signToken, requirePermission } from './infra/auth.js';
+import { claimsFromMembership, requireAuth, signToken, requirePermission, verifyBootstrapToken } from './infra/auth.js';
 import { requireTenant, type TenantRequest } from './middleware/tenant.js';
 import { appendAudit } from './infra/audit.js';
 import { claimIdempotency } from './infra/idempotency.js';
@@ -26,13 +26,23 @@ app.use(rateLimit({windowMs:60_000,max:300,standardHeaders:true,legacyHeaders:fa
 
 app.get('/api/health',(_,res)=>res.json({ok:true,service:'horus-sentinel-ai'}));
 
-app.post('/api/auth/token',(req,res)=>{
+app.post('/api/auth/token',async(req,res)=>{
   try{
+    if(!process.env.HORUS_BOOTSTRAP_TOKEN)return res.status(503).json({error:'bootstrap authentication not configured'});
+    if(!verifyBootstrapToken(req.header('x-bootstrap-token')))return res.status(401).json({error:'invalid bootstrap credential'});
     const tenantId=String(req.body?.tenantId||''),sub=String(req.body?.userId||'');
     if(!tenantId||!sub)return res.status(400).json({error:'tenantId and userId required'});
-    const role=String(req.body?.role||'viewer');
-    const permissions=Array.isArray(req.body?.permissions)?req.body.permissions.map(String):[];
-    res.json({token:signToken({sub,tenantId,role,permissions})});
+    const membership=await pool.query(
+      'SELECT m.role,m.permissions,t.status FROM memberships m JOIN tenants t ON t.id=m.tenant_id WHERE m.tenant_id=$1 AND m.user_id=$2',
+      [tenantId,sub],
+    );
+    if(!membership.rowCount)return res.status(403).json({error:'user is not a tenant member'});
+    if(membership.rows[0].status!=='active')return res.status(403).json({error:'tenant is not active'});
+    const rawPermissions=membership.rows[0].permissions;
+    const permissions=Array.isArray(rawPermissions)?rawPermissions.map(String):[];
+    const claims=claimsFromMembership({sub,tenantId,membership:{role:String(membership.rows[0].role),permissions}});
+    await appendAudit(pool,{tenantId,actorId:sub,action:'auth.token_issued',resourceType:'user',resourceId:sub,metadata:{role:claims.role,permissionCount:claims.permissions.length}});
+    res.json({token:signToken(claims)});
   }catch(e){res.status(503).json({error:e instanceof Error?e.message:'authentication unavailable'});}
 });
 
