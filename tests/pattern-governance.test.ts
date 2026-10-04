@@ -29,3 +29,15 @@ test('database governance contains tenant-safe pattern invariants', () => {
     'pattern_candidates_reviewer_tenant_fk',
   ]) assert.ok(source.includes(marker), `missing database governance marker: ${marker}`);
 });
+
+
+test('activation serializes versions by tenant and pattern name', () => {
+  const source = fs.readFileSync(new URL('../src/routes/patternLearningRoutes.ts', import.meta.url), 'utf8');
+  assert.ok(source.includes("ORDER BY id FOR UPDATE"));
+  assert.ok(source.includes("SET enabled=false WHERE tenant_id=$1 AND name=$2"));
+});
+
+test('promotion serializes version allocation for the same tenant and pattern name', () => {
+  const source = fs.readFileSync(new URL('../src/routes/patternLearningRoutes.ts', import.meta.url), 'utf8');
+  assert.ok(source.includes("ORDER BY version DESC FOR UPDATE"));
+});
