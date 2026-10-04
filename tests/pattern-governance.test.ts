@@ -141,3 +141,14 @@ test('audit verification does not require contiguous global sequence numbers', (
   assert.ok(audit.includes('event.sequence<=previousSequence'));
   assert.ok(!audit.includes('event.sequence!==previousSequence+1'));
 });
+
+
+test('audit integrity is exposed as a tenant-scoped read-only operation', () => {
+  const source = fs.readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
+  assert.ok(source.includes("app.get('/api/audit/integrity'"));
+  assert.ok(source.includes("requirePermission('audit:read')"));
+  assert.ok(source.includes('verifyAuditChain(tx,req.tenantId!)'));
+  assert.ok(source.includes('res.status(result.valid?200:409).json(result)'));
+  assert.ok(!source.includes('UPDATE audit_events'));
+  assert.ok(!source.includes('DELETE FROM audit_events'));
+});
