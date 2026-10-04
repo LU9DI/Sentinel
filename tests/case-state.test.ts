@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {canTransition,assertTransition} from '../src/domain/caseStateMachine.js';
+test('case state machine accepts only forward operational transitions',()=>{assert.equal(canTransition('open','investigating'),true);assert.equal(canTransition('investigating','contained'),true);assert.equal(canTransition('contained','resolved'),true);assert.equal(canTransition('resolved','closed'),true);assert.equal(canTransition('closed','open'),false);assert.throws(()=>assertTransition('closed','open'));});

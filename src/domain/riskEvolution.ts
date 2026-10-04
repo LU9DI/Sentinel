@@ -1,0 +1,3 @@
+import {normalizeSeverity} from './sentinelValidation.js';
+export function evolveRisk(previous:number,newSignalSeverity:string,correlationScore:number,signalCount:number){const sev={low:0.1,medium:0.25,high:0.45,critical:0.7}[normalizeSeverity(newSignalSeverity) as 'low'|'medium'|'high'|'critical'];const next=Math.min(1,Math.max(0,previous*.7+correlationScore*.2+sev*.08+Math.min(signalCount,10)*.002));return {score:Number(next.toFixed(4)),severity:normalizeSeverity(next>=.85?'critical':next>=.65?'high':next>=.4?'medium':'low')};}
+export function shouldEscalate(previous:string,next:string){const rank={low:1,medium:2,high:3,critical:4};return (rank[next as keyof typeof rank]??0)>(rank[previous as keyof typeof rank]??0)}
