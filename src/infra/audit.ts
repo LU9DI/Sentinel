@@ -1,4 +1,4 @@
-import crypto from 'node:crypto'; import type {Pool,PoolClient} from 'pg';
+import crypto from 'node:crypto'; import type {PoolClient} from 'pg';
 
 type AuditEvent = {
   tenantId:string;
@@ -10,7 +10,10 @@ type AuditEvent = {
   transition?: {previousState:unknown; nextState:unknown};
 };
 
-export async function appendAudit(db:Pool|PoolClient,e:AuditEvent){
+export async function appendAudit(db:PoolClient,e:AuditEvent){
+  // Serialize the audit chain per tenant for the entire transaction. A row-level
+  // lock on the current tail is insufficient when a tenant has no audit rows yet.
+  await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[e.tenantId]);
   const previousHashResult=await db.query('SELECT hash FROM audit_events WHERE tenant_id=$1 ORDER BY sequence DESC LIMIT 1 FOR UPDATE',[e.tenantId]);
   const previousHash=previousHashResult.rows[0]?.hash??null;
   const metadata = e.transition
