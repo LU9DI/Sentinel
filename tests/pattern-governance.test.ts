@@ -5,7 +5,7 @@ import fs from 'node:fs';
 test('pattern learning has explicit governance lifecycle endpoints', () => {
   const source = fs.readFileSync(new URL('../src/routes/patternLearningRoutes.ts', import.meta.url), 'utf8');
   for (const marker of [
-    "previousStatus !== 'pending' && previousStatus !== 'review',"
+    ""previousStatus !== 'pending' && previousStatus !== 'review'","
     "status !== 'approved'",
     "enabled: false",
     "pattern_definition.activated",
