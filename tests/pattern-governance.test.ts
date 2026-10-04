@@ -65,3 +65,16 @@ test('active pattern definitions are operationally immutable', () => {
     'pattern_definitions_active_delete_trg',
   ]) assert.ok(source.includes(marker), `missing immutability marker: ${marker}`);
 });
+
+
+test('pattern activation requires a governed database transaction', () => {
+  const db = fs.readFileSync(new URL('../src/infra/db.ts', import.meta.url), 'utf8');
+  const routes = fs.readFileSync(new URL('../src/routes/patternLearningRoutes.ts', import.meta.url), 'utf8');
+  for (const marker of [
+    'guard_pattern_activation',
+    "current_setting('sentinel.pattern_activation', true)",
+    'pattern_definitions_activation_guard_trg',
+    'pattern definitions must be activated through the governed activation transaction',
+  ]) assert.ok(db.includes(marker), `missing activation guard marker: ${marker}`);
+  assert.ok(routes.includes("SET LOCAL sentinel.pattern_activation = 'true'"));
+});
