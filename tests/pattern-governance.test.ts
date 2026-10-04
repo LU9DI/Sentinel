@@ -78,3 +78,28 @@ test('pattern activation requires a governed database transaction', () => {
   ]) assert.ok(db.includes(marker), `missing activation guard marker: ${marker}`);
   assert.ok(routes.includes("SET LOCAL sentinel.pattern_activation = 'true'"));
 });
+
+
+test('pattern state transitions carry previous and next state in the same transaction audit', () => {
+  const audit = fs.readFileSync(new URL('../src/infra/audit.ts', import.meta.url), 'utf8');
+  const routes = fs.readFileSync(new URL('../src/routes/patternLearningRoutes.ts', import.meta.url), 'utf8');
+  assert.ok(audit.includes('transition?: {previousState:unknown; nextState:unknown}'));
+  assert.ok(audit.includes('transition: e.transition'));
+  assert.ok(routes.includes('previousStatus'));
+  assert.ok(routes.includes('previousEnabled'));
+  assert.ok(routes.includes('previousState: { status: previousStatus }'));
+  assert.ok(routes.includes('nextState: { status: decision }'));
+  assert.ok(routes.includes('previouslyActiveVersions'));
+  assert.ok(routes.includes('appendAudit(tx'));
+});
+
+test('activation audit is part of the governed activation transaction', () => {
+  const routes = fs.readFileSync(new URL('../src/routes/patternLearningRoutes.ts', import.meta.url), 'utf8');
+  const activationStart = routes.indexOf("router.post('/definitions/:id/activate'");
+  const activationEnd = routes.indexOf("export default router;");
+  const activation = routes.slice(activationStart, activationEnd);
+  assert.ok(activation.includes('await withTransaction(async tx'));
+  assert.ok(activation.includes("SET LOCAL sentinel.pattern_activation = 'true'"));
+  assert.ok(activation.includes('await appendAudit(tx'));
+  assert.ok(activation.includes('transition:'));
+});
