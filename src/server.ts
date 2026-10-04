@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { migrate, pool, withTransaction } from './infra/db.js';
 import { claimsFromMembership, requireAuth, signToken, requirePermission, verifyBootstrapToken } from './infra/auth.js';
 import { requireTenant, type TenantRequest } from './middleware/tenant.js';
-import { appendAudit } from './infra/audit.js';
+import { appendAudit, verifyAuditChain } from './infra/audit.js';
 import { claimIdempotency } from './infra/idempotency.js';
 import { normalizeSeverity, normalizeSignalType, boundedNumber } from './domain/sentinelValidation.js';
 import { correlate } from './domain/correlationEngine.js';
@@ -27,6 +27,15 @@ app.use(rateLimit({windowMs:60_000,max:300,standardHeaders:true,legacyHeaders:fa
 
 app.get('/api/health',(_,res)=>res.json({ok:true,service:'horus-sentinel-ai'}));
 app.use('/api/pattern-learning', patternLearningRouter);
+
+app.get('/api/audit/integrity',requireAuth,requireTenant,requirePermission('audit:read'),async(req:TenantRequest,res)=>{
+  try{
+    const result=await withTransaction(async tx=>verifyAuditChain(tx,req.tenantId!));
+    res.status(result.valid?200:409).json(result);
+  }catch(e){
+    res.status(503).json({error:e instanceof Error?e.message:'audit integrity verification unavailable'});
+  }
+});
 
 app.post('/api/auth/token',async(req,res)=>{
   try{
