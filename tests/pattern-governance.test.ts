@@ -5,7 +5,7 @@ import fs from 'node:fs';
 test('pattern learning has explicit governance lifecycle endpoints', () => {
   const source = fs.readFileSync(new URL('../src/routes/patternLearningRoutes.ts', import.meta.url), 'utf8');
   for (const marker of [
-    "status !== 'pending' && row.rows[0].status !== 'review'",
+    "previousStatus !== 'pending' && previousStatus !== 'review',"
     "status !== 'approved'",
     "enabled: false",
     "pattern_definition.activated",
@@ -36,7 +36,7 @@ test('database governance contains tenant-safe pattern invariants', () => {
 
 test('activation serializes versions by tenant and pattern name', () => {
   const source = fs.readFileSync(new URL('../src/routes/patternLearningRoutes.ts', import.meta.url), 'utf8');
-  assert.ok(source.includes("ORDER BY id FOR UPDATE"));
+  assert.ok(source.includes("ORDER BY pd.id FOR UPDATE"));
   assert.ok(source.includes("SET enabled=false WHERE tenant_id=$1 AND name=$2"));
 });
 
@@ -74,7 +74,7 @@ test('pattern activation requires a governed database transaction', () => {
     'guard_pattern_activation',
     "current_setting('sentinel.pattern_activation', true)",
     'pattern_definitions_activation_guard_trg',
-    'pattern definitions must be activated through the governed activation transaction',
+    'pattern activation requires the governed activation transaction',
   ]) assert.ok(db.includes(marker), `missing activation guard marker: ${marker}`);
   assert.ok(routes.includes("SET LOCAL sentinel.pattern_activation = 'true'"));
 });
@@ -132,7 +132,7 @@ test('audit append and verification share one canonical hash function', () => {
   const audit = fs.readFileSync(new URL('../src/infra/audit.ts', import.meta.url), 'utf8');
   assert.equal((audit.match(/function auditHash\(/g) || []).length, 1);
   assert.equal((audit.match(/JSON\.stringify\(/g) || []).length, 1);
-  assert.ok(audit.includes('previousHash:e.previousHash'));
+  assert.ok(audit.includes('previousHash:event.previousHash'));
   assert.ok(audit.includes('previousHash:event.previous_hash'));
 });
 
