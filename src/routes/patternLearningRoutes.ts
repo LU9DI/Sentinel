@@ -121,6 +121,7 @@ router.post('/definitions/:id/activate', requirePermission('rules:write'), async
     if (!row) return null;
     if (row.enabled) return row;
     if (row.originCandidateId && row.candidateStatus !== 'promoted') throw new Error('pattern candidate must be promoted before activation');
+    await tx.query("SET LOCAL sentinel.pattern_activation = 'true'");
     await tx.query('UPDATE pattern_definitions SET enabled=false WHERE tenant_id=$1 AND name=$2', [req.tenantId, row.name]);
     const updated = await tx.query('UPDATE pattern_definitions SET enabled=true,activated_by=$3,activated_at=now() WHERE id=$1 AND tenant_id=$2 RETURNING id,name,version,enabled,activated_by AS "activatedBy",activated_at AS "activatedAt",origin_candidate_id AS "originCandidateId"', [id, req.tenantId, req.actorId]);
     await appendAudit(tx, {
