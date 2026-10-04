@@ -42,4 +42,63 @@ export async function migrate(){
     "CREATE TABLE IF NOT EXISTS audit_events(sequence bigserial PRIMARY KEY,tenant_id text NOT NULL,actor_id text,action text NOT NULL,resource_type text NOT NULL,resource_id text,metadata jsonb NOT NULL DEFAULT '{}'::jsonb,previous_hash text,hash text NOT NULL,created_at timestamptz NOT NULL DEFAULT now())"
   ];
   for(const statement of sql) await pool.query(statement);
+
+  // Defense in depth: every cross-entity foreign key must carry the tenant boundary.
+  // The original single-column FKs remain valid, while these composite FKs prevent
+  // a row from tenant A from referencing a resource owned by tenant B.
+  const tenantIsolation = [
+    "CREATE UNIQUE INDEX IF NOT EXISTS entity_nodes_tenant_id_uq ON entity_nodes(tenant_id,id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS signals_tenant_id_uq ON signals(tenant_id,id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS correlations_tenant_id_uq ON correlations(tenant_id,id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS cases_tenant_id_uq ON cases(tenant_id,id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS alerts_tenant_id_uq ON alerts(tenant_id,id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS pattern_definitions_tenant_id_uq ON pattern_definitions(tenant_id,id,version)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS audit_events_tenant_sequence_uq ON audit_events(tenant_id,sequence)",
+    `DO $ BEGIN
+      ALTER TABLE entity_relationships
+        ADD CONSTRAINT entity_relationships_from_entity_tenant_fk
+        FOREIGN KEY (tenant_id,from_entity_id) REFERENCES entity_nodes(tenant_id,id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+    `DO $ BEGIN
+      ALTER TABLE entity_relationships
+        ADD CONSTRAINT entity_relationships_to_entity_tenant_fk
+        FOREIGN KEY (tenant_id,to_entity_id) REFERENCES entity_nodes(tenant_id,id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+    `DO $ BEGIN
+      ALTER TABLE correlation_factors
+        ADD CONSTRAINT correlation_factors_correlation_tenant_fk
+        FOREIGN KEY (tenant_id,correlation_id) REFERENCES correlations(tenant_id,id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+    `DO $ BEGIN
+      ALTER TABLE cases
+        ADD CONSTRAINT cases_correlation_tenant_fk
+        FOREIGN KEY (tenant_id,correlation_id) REFERENCES correlations(tenant_id,id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+    `DO $ BEGIN
+      ALTER TABLE incident_risk_current
+        ADD CONSTRAINT incident_risk_case_tenant_fk
+        FOREIGN KEY (tenant_id,case_id) REFERENCES cases(tenant_id,id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+    `DO $ BEGIN
+      ALTER TABLE alerts
+        ADD CONSTRAINT alerts_case_tenant_fk
+        FOREIGN KEY (tenant_id,case_id) REFERENCES cases(tenant_id,id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+    `DO $ BEGIN
+      ALTER TABLE alert_deliveries
+        ADD CONSTRAINT alert_deliveries_alert_tenant_fk
+        FOREIGN KEY (tenant_id,alert_id) REFERENCES alerts(tenant_id,id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+    `DO $ BEGIN
+      ALTER TABLE semantic_fingerprints
+        ADD CONSTRAINT semantic_fingerprints_signal_tenant_fk
+        FOREIGN KEY (tenant_id,signal_id) REFERENCES signals(tenant_id,id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+    `DO $ BEGIN
+      ALTER TABLE audit_events
+        ADD CONSTRAINT audit_events_tenant_fk
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+  ];
+  for(const statement of tenantIsolation) await pool.query(statement);
 }
