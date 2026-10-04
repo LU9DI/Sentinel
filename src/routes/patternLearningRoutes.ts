@@ -57,7 +57,8 @@ router.post('/candidates/:id/review', requirePermission('risk:write'), async (re
   const result = await withTransaction(async tx => {
     const row = await tx.query('SELECT status FROM pattern_candidates WHERE id=$1 AND tenant_id=$2 FOR UPDATE', [id, req.tenantId]);
     if (!row.rowCount) return null;
-    if (row.rows[0].status !== 'pending' && row.rows[0].status !== 'review') throw new Error('candidate is not reviewable');
+    const previousStatus = row.rows[0].status;
+    if (previousStatus !== 'pending' && previousStatus !== 'review') throw new Error('candidate is not reviewable');
     const updated = await tx.query(
       'UPDATE pattern_candidates SET status=$1,review_notes=$2,reviewed_by=$3,reviewed_at=now(),updated_at=now() WHERE id=$4 AND tenant_id=$5 RETURNING id,status,reviewed_by AS "reviewedBy",reviewed_at AS "reviewedAt"',
       [decision, String(req.body?.notes || ''), req.actorId, id, req.tenantId],
@@ -68,6 +69,7 @@ router.post('/candidates/:id/review', requirePermission('risk:write'), async (re
       action: `pattern_candidate.${decision}`,
       resourceType: 'pattern_candidate',
       resourceId: id,
+      transition: { previousState: { status: previousStatus }, nextState: { status: decision } },
       metadata: { notes: String(req.body?.notes || '') },
     });
     return updated.rows[0];
@@ -84,7 +86,8 @@ router.post('/candidates/:id/promote', requirePermission('risk:write'), async (r
       [id, req.tenantId],
     );
     if (!row.rowCount) return null;
-    if (row.rows[0].status !== 'approved') throw new Error('candidate must be approved before promotion');
+    const previousStatus = row.rows[0].status;
+    if (previousStatus !== 'approved') throw new Error('candidate must be approved before promotion');
     const existing = await tx.query(
       'SELECT id,version,enabled FROM pattern_definitions WHERE tenant_id=$1 AND name=$2 ORDER BY version DESC FOR UPDATE',
       [req.tenantId, row.rows[0].name],
@@ -102,6 +105,10 @@ router.post('/candidates/:id/promote', requirePermission('risk:write'), async (r
       action: 'pattern_definition.promoted',
       resourceType: 'pattern_definition',
       resourceId: pattern.id,
+      transition: {
+        previousState: { candidateStatus: previousStatus, definitionExists: false },
+        nextState: { candidateStatus: 'promoted', definitionVersion: version, enabled: false },
+      },
       metadata: { candidateId: id, version, enabled: false },
     });
     return { ...pattern, enabled: false };
@@ -121,6 +128,7 @@ router.post('/definitions/:id/activate', requirePermission('rules:write'), async
     if (!row) return null;
     if (row.enabled) return row;
     if (row.originCandidateId && row.candidateStatus !== 'promoted') throw new Error('pattern candidate must be promoted before activation');
+    const previousEnabled = definitions.rows.filter((definition) => definition.enabled && definition.id !== id).map((definition) => ({ id: definition.id, version: definition.version, enabled: definition.enabled }));
     await tx.query("SET LOCAL sentinel.pattern_activation = 'true'");
     await tx.query('UPDATE pattern_definitions SET enabled=false WHERE tenant_id=$1 AND name=$2', [req.tenantId, row.name]);
     const updated = await tx.query('UPDATE pattern_definitions SET enabled=true,activated_by=$3,activated_at=now() WHERE id=$1 AND tenant_id=$2 RETURNING id,name,version,enabled,activated_by AS "activatedBy",activated_at AS "activatedAt",origin_candidate_id AS "originCandidateId"', [id, req.tenantId, req.actorId]);
@@ -130,7 +138,17 @@ router.post('/definitions/:id/activate', requirePermission('rules:write'), async
       action: 'pattern_definition.activated',
       resourceType: 'pattern_definition',
       resourceId: id,
-      metadata: { version: row.version, explicitActivation: true },
+      transition: {
+        previousState: {
+          target: { id, version: row.version, enabled: false },
+          previouslyActiveVersions: previousEnabled,
+        },
+        nextState: {
+          target: { id, version: row.version, enabled: true, activatedBy: req.actorId },
+          previouslyActiveVersions: previousEnabled.map((definition) => ({ ...definition, enabled: false })),
+        },
+      },
+      metadata: { version: row.version, explicitActivation: true, affectedVersions: previousEnabled },
     });
     return updated.rows[0];
   });
