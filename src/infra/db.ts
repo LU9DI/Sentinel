@@ -46,6 +46,10 @@ export async function migrate(){
   // Pattern learning is a governed lifecycle. Existing deployments are validated
   // before constraints are introduced; invalid legacy data fails loudly.
   const patternGovernance = [
+    "CREATE UNIQUE INDEX IF NOT EXISTS pattern_candidates_tenant_id_uq ON pattern_candidates(tenant_id,id)",
+    `ALTER TABLE pattern_definitions ADD COLUMN IF NOT EXISTS origin_candidate_id uuid`,
+    `ALTER TABLE pattern_definitions ADD COLUMN IF NOT EXISTS activated_by text`,
+    `ALTER TABLE pattern_definitions ADD COLUMN IF NOT EXISTS activated_at timestamptz`,
     `DO $
       BEGIN
         IF EXISTS (
@@ -105,6 +109,21 @@ export async function migrate(){
   ];
   for(const statement of patternGovernance) await pool.query(statement);
   await pool.query('ALTER TABLE pattern_definitions ALTER COLUMN enabled SET DEFAULT false');
+  const patternLineage = [
+    `DO $
+      BEGIN
+        ALTER TABLE pattern_definitions
+          ADD CONSTRAINT pattern_definitions_origin_candidate_tenant_fk
+          FOREIGN KEY (tenant_id,origin_candidate_id) REFERENCES pattern_candidates(tenant_id,id);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+    `DO $
+      BEGIN
+        ALTER TABLE pattern_definitions
+          ADD CONSTRAINT pattern_definitions_activated_by_tenant_fk
+          FOREIGN KEY (tenant_id,activated_by) REFERENCES memberships(tenant_id,user_id);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+  ];
+  for(const statement of patternLineage) await pool.query(statement);
 
   // Defense in depth: every cross-entity foreign key must carry the tenant boundary.
   // The original single-column FKs remain valid, while these composite FKs prevent
