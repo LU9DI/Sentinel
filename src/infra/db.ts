@@ -124,6 +124,39 @@ export async function migrate(){
       EXCEPTION WHEN duplicate_object THEN NULL; END $`,
   ];
   for(const statement of patternLineage) await pool.query(statement);
+  // Operational immutability: once a pattern version is active, its semantic definition becomes an auditable artifact.
+  const patternImmutability = [
+    `CREATE OR REPLACE FUNCTION prevent_active_pattern_mutation()
+      RETURNS trigger AS $
+      BEGIN
+        IF OLD.enabled = true AND (
+          NEW.name IS DISTINCT FROM OLD.name OR NEW.version IS DISTINCT FROM OLD.version OR
+          NEW.sequence IS DISTINCT FROM OLD.sequence OR NEW.min_window_ms IS DISTINCT FROM OLD.min_window_ms OR
+          NEW.preferred_window_ms IS DISTINCT FROM OLD.preferred_window_ms OR NEW.max_window_ms IS DISTINCT FROM OLD.max_window_ms OR
+          NEW.weights IS DISTINCT FROM OLD.weights OR NEW.geo IS DISTINCT FROM OLD.geo OR
+          NEW.min_confidence IS DISTINCT FROM OLD.min_confidence OR NEW.created_at IS DISTINCT FROM OLD.created_at OR
+          NEW.origin_candidate_id IS DISTINCT FROM OLD.origin_candidate_id
+        ) THEN
+          RAISE EXCEPTION 'active pattern definitions are immutable; create a new version';
+        END IF;
+        RETURN NEW;
+      END;
+      $ LANGUAGE plpgsql`,
+    `CREATE OR REPLACE FUNCTION prevent_active_pattern_delete()
+      RETURNS trigger AS $
+      BEGIN
+        IF OLD.enabled = true THEN
+          RAISE EXCEPTION 'active pattern definitions cannot be deleted; activate a new version instead';
+        END IF;
+        RETURN OLD;
+      END;
+      $ LANGUAGE plpgsql`,
+    `DROP TRIGGER IF EXISTS pattern_definitions_active_immutability_trg ON pattern_definitions`,
+    `CREATE TRIGGER pattern_definitions_active_immutability_trg BEFORE UPDATE ON pattern_definitions FOR EACH ROW EXECUTE FUNCTION prevent_active_pattern_mutation()`,
+    `DROP TRIGGER IF EXISTS pattern_definitions_active_delete_trg ON pattern_definitions`,
+    `CREATE TRIGGER pattern_definitions_active_delete_trg BEFORE DELETE ON pattern_definitions FOR EACH ROW EXECUTE FUNCTION prevent_active_pattern_delete()`,
+  ];
+  for(const statement of patternImmutability) await pool.query(statement);
 
   // Defense in depth: every cross-entity foreign key must carry the tenant boundary.
   // The original single-column FKs remain valid, while these composite FKs prevent
