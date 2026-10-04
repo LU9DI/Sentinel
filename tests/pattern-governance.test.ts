@@ -52,3 +52,16 @@ test('activation requires promoted lineage and records operational actor', () =>
   assert.ok(source.includes("activated_by=$3,activated_at=now()"));
   assert.ok(source.includes("origin_candidate_id"));
 });
+
+
+test('active pattern definitions are operationally immutable', () => {
+  const source = fs.readFileSync(new URL('../src/infra/db.ts', import.meta.url), 'utf8');
+  for (const marker of [
+    'prevent_active_pattern_mutation',
+    'active pattern definitions are immutable; create a new version',
+    'prevent_active_pattern_delete',
+    'active pattern definitions cannot be deleted; activate a new version instead',
+    'pattern_definitions_active_immutability_trg',
+    'pattern_definitions_active_delete_trg',
+  ]) assert.ok(source.includes(marker), `missing immutability marker: ${marker}`);
+});
