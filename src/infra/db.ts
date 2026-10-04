@@ -127,7 +127,7 @@ export async function migrate(){
   // Operational immutability: once a pattern version is active, its semantic definition becomes an auditable artifact.
   const patternImmutability = [
     `CREATE OR REPLACE FUNCTION prevent_active_pattern_mutation()
-      RETURNS trigger AS $
+      RETURNS trigger AS $func$
       BEGIN
         IF OLD.enabled = true AND (
           NEW.name IS DISTINCT FROM OLD.name OR NEW.version IS DISTINCT FROM OLD.version OR
@@ -141,20 +141,31 @@ export async function migrate(){
         END IF;
         RETURN NEW;
       END;
-      $ LANGUAGE plpgsql`,
+      $func$ LANGUAGE plpgsql`,
     `CREATE OR REPLACE FUNCTION prevent_active_pattern_delete()
-      RETURNS trigger AS $
+      RETURNS trigger AS $func$
       BEGIN
         IF OLD.enabled = true THEN
           RAISE EXCEPTION 'active pattern definitions cannot be deleted; activate a new version instead';
         END IF;
         RETURN OLD;
       END;
-      $ LANGUAGE plpgsql`,
+      $func$ LANGUAGE plpgsql`,
+    `CREATE OR REPLACE FUNCTION prevent_direct_pattern_activation()
+      RETURNS trigger AS $func$
+      BEGIN
+        IF NEW.enabled = true THEN
+          RAISE EXCEPTION 'pattern definitions must be activated through the governed activation flow';
+        END IF;
+        RETURN NEW;
+      END;
+      $func$ LANGUAGE plpgsql`,
     `DROP TRIGGER IF EXISTS pattern_definitions_active_immutability_trg ON pattern_definitions`,
     `CREATE TRIGGER pattern_definitions_active_immutability_trg BEFORE UPDATE ON pattern_definitions FOR EACH ROW EXECUTE FUNCTION prevent_active_pattern_mutation()`,
     `DROP TRIGGER IF EXISTS pattern_definitions_active_delete_trg ON pattern_definitions`,
     `CREATE TRIGGER pattern_definitions_active_delete_trg BEFORE DELETE ON pattern_definitions FOR EACH ROW EXECUTE FUNCTION prevent_active_pattern_delete()`,
+    `DROP TRIGGER IF EXISTS pattern_definitions_direct_activation_trg ON pattern_definitions`,
+    `CREATE TRIGGER pattern_definitions_direct_activation_trg BEFORE INSERT ON pattern_definitions FOR EACH ROW EXECUTE FUNCTION prevent_direct_pattern_activation()`,
   ];
   for(const statement of patternImmutability) await pool.query(statement);
 
