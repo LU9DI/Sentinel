@@ -11,7 +11,7 @@ type AuditEvent = {
 };
 
 type StoredAuditEvent = {
-  sequence:number;
+  sequence:number|string;
   tenant_id:string;
   actor_id:string|null;
   action:string;
@@ -23,8 +23,8 @@ type StoredAuditEvent = {
 };
 
 export type AuditChainVerification =
-  | { valid:true; tenantId:string; eventCount:number; lastSequence:number|null }
-  | { valid:false; tenantId:string; eventCount:number; sequence:number; reason:string };
+  | { valid:true; tenantId:string; eventCount:number; lastSequence:string|null }
+  | { valid:false; tenantId:string; eventCount:number; sequence:number|string; reason:string };
 
 function canonicalAuditPayload(event:{
   tenantId:string;
@@ -81,12 +81,13 @@ export async function verifyAuditChain(db:PoolClient,tenantId:string):Promise<Au
     [tenantId],
   );
   let previousHash:string|null=null;
-  let previousSequence:number|null=null;
+  let previousSequence:bigint|null=null;
   for(const event of result.rows){
+    const currentSequence=BigInt(event.sequence);
     if(event.tenant_id!==tenantId){
       return {valid:false,tenantId,eventCount:result.rowCount??0,sequence:event.sequence,reason:'tenant mismatch'};
     }
-    if(previousSequence!==null && event.sequence<=previousSequence){
+    if(previousSequence!==null && currentSequence<=previousSequence){
       return {valid:false,tenantId,eventCount:result.rowCount??0,sequence:event.sequence,reason:'sequence is not strictly increasing'};
     }
     if(event.previous_hash!==previousHash){
@@ -105,7 +106,12 @@ export async function verifyAuditChain(db:PoolClient,tenantId:string):Promise<Au
       return {valid:false,tenantId,eventCount:result.rowCount??0,sequence:event.sequence,reason:'stored hash does not match the canonical event payload'};
     }
     previousHash=event.hash;
-    previousSequence=event.sequence;
+    previousSequence=currentSequence;
   }
-  return {valid:true,tenantId,eventCount:result.rowCount??0,lastSequence:previousSequence};
+  return {
+    valid:true,
+    tenantId,
+    eventCount:result.rowCount??0,
+    lastSequence:previousSequence===null?null:previousSequence.toString(),
+  };
 }
