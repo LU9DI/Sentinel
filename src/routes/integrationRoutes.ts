@@ -44,7 +44,7 @@ router.post('/signals', async (req, res) => {
       permissions: ['signals:write'],
     };
     const token = signToken(claims);
-    const port = Number(process.env.PORT || 3000);
+    const port = Number(process.env.PORT || 5000);
     const upstream = await fetch(`http://127.0.0.1:${port}/api/signals`, {
       method: 'POST',
       headers: {
