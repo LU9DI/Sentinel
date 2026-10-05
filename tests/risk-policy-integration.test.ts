@@ -45,7 +45,7 @@ test('real DB path enforces correlation -> risk -> policy -> case -> alert -> ou
     for (const key of ['integration-signal-a', 'integration-signal-b']) {
       const response = await fetch(`${baseUrl}/api/signals`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'idempotency-key': key },
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'x-tenant-id': tenantId, 'idempotency-key': key },
         body: JSON.stringify({ type: 'security_event', severity: 'critical', source: 'integration-test', entityIds: [entityId], lat: -15.78, lon: -47.93, occurredAt, payload: { integration: true } }),
       });
       assert.ok([201, 200].includes(response.status), await response.text());
