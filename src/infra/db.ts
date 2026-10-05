@@ -1,5 +1,27 @@
 import { Pool, PoolClient } from 'pg';
 
+function validateDatabaseUrl(raw: string | undefined): string {
+  if (!raw) throw new Error('DATABASE_URL is required. Copy the PostgreSQL connection string from Supabase into .env.');
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('DATABASE_URL is not a valid PostgreSQL connection string.');
+  }
+  if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
+    throw new Error('DATABASE_URL must use postgres:// or postgresql://.');
+  }
+  const host = url.hostname.toLowerCase();
+  const placeholders = new Set(['host', 'your-host', 'localhost-placeholder', 'example.com']);
+  if (placeholders.has(host) || host.includes('your-host') || host.includes('your_host')) {
+    throw new Error('DATABASE_URL still contains a placeholder host. Replace HOST with the real Supabase PostgreSQL host.');
+  }
+  if (!url.username || !url.password) {
+    throw new Error('DATABASE_URL must include the PostgreSQL username and password.');
+  }
+  return raw;
+}
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: Number(process.env.DB_POOL_MAX || 10),
@@ -13,8 +35,26 @@ export async function withTransaction<T>(fn:(client:PoolClient)=>Promise<T>):Pro
 }
 
 export async function migrate(){
-  if(!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+  validateDatabaseUrl(process.env.DATABASE_URL);
   if(!process.env.JWT_SECRET || process.env.JWT_SECRET.length<32) throw new Error('JWT_SECRET must be at least 32 characters');
+  if(!process.env.HORUS_BOOTSTRAP_TOKEN || process.env.HORUS_BOOTSTRAP_TOKEN.length<32) throw new Error('HORUS_BOOTSTRAP_TOKEN must be at least 32 characters');
+
+  const sql=[export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: Number(process.env.DB_POOL_MAX || 10),
+});
+
+export async function withTransaction<T>(fn:(client:PoolClient)=>Promise<T>):Promise<T>{
+  const client=await pool.connect();
+  try{await client.query('BEGIN');const value=await fn(client);await client.query('COMMIT');return value;}
+  catch(error){await client.query('ROLLBACK');throw error;}
+  finally{client.release();}
+}
+
+export async function migrate(){
+  validateDatabaseUrl(process.env.DATABASE_URL);
+  if(!process.env.JWT_SECRET || process.env.JWT_SECRET.length<32) throw new Error('JWT_SECRET must be at least 32 characters');
+  if(!process.env.HORUS_BOOTSTRAP_TOKEN || process.env.HORUS_BOOTSTRAP_TOKEN.length<32) throw new Error('HORUS_BOOTSTRAP_TOKEN must be at least 32 characters');
   const sql=[
     "CREATE TABLE IF NOT EXISTS tenants(id text PRIMARY KEY,name text NOT NULL,status text NOT NULL DEFAULT 'active',created_at timestamptz NOT NULL DEFAULT now())",
     "CREATE TABLE IF NOT EXISTS users(id text PRIMARY KEY,email text NOT NULL UNIQUE,name text,created_at timestamptz NOT NULL DEFAULT now())",
