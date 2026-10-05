@@ -50,7 +50,7 @@ export async function migrate(){
     `ALTER TABLE pattern_definitions ADD COLUMN IF NOT EXISTS origin_candidate_id uuid`,
     `ALTER TABLE pattern_definitions ADD COLUMN IF NOT EXISTS activated_by text`,
     `ALTER TABLE pattern_definitions ADD COLUMN IF NOT EXISTS activated_at timestamptz`,
-    `DO $
+    `DO $$
       BEGIN
         IF EXISTS (
           SELECT 1 FROM pattern_candidates
@@ -63,7 +63,7 @@ export async function migrate(){
           CHECK (status IN ('pending','review','approved','rejected','promoted'));
       EXCEPTION WHEN duplicate_object THEN NULL;
       END $$`,
-    `DO $
+    `DO $$
       BEGIN
         IF EXISTS (
           SELECT 1
@@ -79,7 +79,7 @@ export async function migrate(){
           FOREIGN KEY (tenant_id,reviewed_by) REFERENCES memberships(tenant_id,user_id);
       EXCEPTION WHEN duplicate_object THEN NULL;
       END $$`,
-    `DO $
+    `DO $$
       BEGIN
         IF EXISTS (
           SELECT 1
@@ -92,7 +92,7 @@ export async function migrate(){
         CREATE UNIQUE INDEX IF NOT EXISTS pattern_definitions_tenant_name_version_uq
           ON pattern_definitions(tenant_id,name,version);
       END $$`,
-    `DO $
+    `DO $$
       BEGIN
         IF EXISTS (
           SELECT 1
@@ -110,13 +110,13 @@ export async function migrate(){
   for(const statement of patternGovernance) await pool.query(statement);
   await pool.query('ALTER TABLE pattern_definitions ALTER COLUMN enabled SET DEFAULT false');
   const patternLineage = [
-    `DO $
+    `DO $$
       BEGIN
         ALTER TABLE pattern_definitions
           ADD CONSTRAINT pattern_definitions_origin_candidate_tenant_fk
           FOREIGN KEY (tenant_id,origin_candidate_id) REFERENCES pattern_candidates(tenant_id,id);
       EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
-    `DO $
+    `DO $$
       BEGIN
         ALTER TABLE pattern_definitions
           ADD CONSTRAINT pattern_definitions_activated_by_tenant_fk
