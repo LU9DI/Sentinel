@@ -62,7 +62,7 @@ export async function migrate(){
           ADD CONSTRAINT pattern_candidates_status_check
           CHECK (status IN ('pending','review','approved','rejected','promoted'));
       EXCEPTION WHEN duplicate_object THEN NULL;
-      END $`,
+      END $$`,
     `DO $
       BEGIN
         IF EXISTS (
@@ -78,7 +78,7 @@ export async function migrate(){
           ADD CONSTRAINT pattern_candidates_reviewer_tenant_fk
           FOREIGN KEY (tenant_id,reviewed_by) REFERENCES memberships(tenant_id,user_id);
       EXCEPTION WHEN duplicate_object THEN NULL;
-      END $`,
+      END $$`,
     `DO $
       BEGIN
         IF EXISTS (
@@ -91,7 +91,7 @@ export async function migrate(){
         END IF;
         CREATE UNIQUE INDEX IF NOT EXISTS pattern_definitions_tenant_name_version_uq
           ON pattern_definitions(tenant_id,name,version);
-      END $`,
+      END $$`,
     `DO $
       BEGIN
         IF EXISTS (
@@ -105,7 +105,7 @@ export async function migrate(){
         END IF;
         CREATE UNIQUE INDEX IF NOT EXISTS pattern_definitions_one_active_name_uq
           ON pattern_definitions(tenant_id,name) WHERE enabled=true;
-      END $`,
+      END $$`,
   ];
   for(const statement of patternGovernance) await pool.query(statement);
   await pool.query('ALTER TABLE pattern_definitions ALTER COLUMN enabled SET DEFAULT false');
@@ -115,13 +115,13 @@ export async function migrate(){
         ALTER TABLE pattern_definitions
           ADD CONSTRAINT pattern_definitions_origin_candidate_tenant_fk
           FOREIGN KEY (tenant_id,origin_candidate_id) REFERENCES pattern_candidates(tenant_id,id);
-      EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
     `DO $
       BEGIN
         ALTER TABLE pattern_definitions
           ADD CONSTRAINT pattern_definitions_activated_by_tenant_fk
           FOREIGN KEY (tenant_id,activated_by) REFERENCES memberships(tenant_id,user_id);
-      EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
   ];
   for(const statement of patternLineage) await pool.query(statement);
   // Operational immutability: once a pattern version is active, its semantic definition becomes an auditable artifact.
@@ -192,51 +192,51 @@ export async function migrate(){
     "CREATE UNIQUE INDEX IF NOT EXISTS alerts_tenant_id_uq ON alerts(tenant_id,id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS pattern_definitions_tenant_id_uq ON pattern_definitions(tenant_id,id,version)",
     "CREATE UNIQUE INDEX IF NOT EXISTS audit_events_tenant_sequence_uq ON audit_events(tenant_id,sequence)",
-    `DO $ BEGIN
+    `DO $$ BEGIN
       ALTER TABLE entity_relationships
         ADD CONSTRAINT entity_relationships_from_entity_tenant_fk
         FOREIGN KEY (tenant_id,from_entity_id) REFERENCES entity_nodes(tenant_id,id);
-    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
-    `DO $ BEGIN
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `DO $$ BEGIN
       ALTER TABLE entity_relationships
         ADD CONSTRAINT entity_relationships_to_entity_tenant_fk
         FOREIGN KEY (tenant_id,to_entity_id) REFERENCES entity_nodes(tenant_id,id);
-    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
-    `DO $ BEGIN
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `DO $$ BEGIN
       ALTER TABLE correlation_factors
         ADD CONSTRAINT correlation_factors_correlation_tenant_fk
         FOREIGN KEY (tenant_id,correlation_id) REFERENCES correlations(tenant_id,id);
-    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
-    `DO $ BEGIN
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `DO $$ BEGIN
       ALTER TABLE cases
         ADD CONSTRAINT cases_correlation_tenant_fk
         FOREIGN KEY (tenant_id,correlation_id) REFERENCES correlations(tenant_id,id);
-    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
-    `DO $ BEGIN
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `DO $$ BEGIN
       ALTER TABLE incident_risk_current
         ADD CONSTRAINT incident_risk_case_tenant_fk
         FOREIGN KEY (tenant_id,case_id) REFERENCES cases(tenant_id,id);
-    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
-    `DO $ BEGIN
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `DO $$ BEGIN
       ALTER TABLE alerts
         ADD CONSTRAINT alerts_case_tenant_fk
         FOREIGN KEY (tenant_id,case_id) REFERENCES cases(tenant_id,id);
-    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
-    `DO $ BEGIN
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `DO $$ BEGIN
       ALTER TABLE alert_deliveries
         ADD CONSTRAINT alert_deliveries_alert_tenant_fk
         FOREIGN KEY (tenant_id,alert_id) REFERENCES alerts(tenant_id,id);
-    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
-    `DO $ BEGIN
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `DO $$ BEGIN
       ALTER TABLE semantic_fingerprints
         ADD CONSTRAINT semantic_fingerprints_signal_tenant_fk
         FOREIGN KEY (tenant_id,signal_id) REFERENCES signals(tenant_id,id);
-    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
-    `DO $ BEGIN
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `DO $$ BEGIN
       ALTER TABLE audit_events
         ADD CONSTRAINT audit_events_tenant_fk
         FOREIGN KEY (tenant_id) REFERENCES tenants(id);
-    EXCEPTION WHEN duplicate_object THEN NULL; END $`,
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
   ];
   for(const statement of tenantIsolation) await pool.query(statement);
 }
