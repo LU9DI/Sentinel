@@ -36,7 +36,7 @@ test('real DB path enforces correlation -> risk -> policy -> case -> alert -> ou
     assert.ok(token);
 
     const ruleResponse = await fetch(`${baseUrl}/api/rules`, {
-      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'x-tenant-id': tenantId },
       body: JSON.stringify({ name: 'critical-integration-policy', definition: { minSeverity: 'high', requireEntity: true } }),
     });
     assert.equal(ruleResponse.status, 201);
