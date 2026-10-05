@@ -21,6 +21,8 @@ import patternLearningRouter from './routes/patternLearningRoutes.js';
 import integrationRouter from './routes/integrationRoutes.js';
 import { generatePredictiveSignals, PREDICTIVE_ALGORITHM_VERSION } from './domain/predictiveRisk.js';
 
+const jsonb=(value:unknown)=>JSON.stringify(value);
+
 const app=express();
 app.disable('x-powered-by');
 app.use(express.json({limit:'1mb'}));
@@ -71,7 +73,7 @@ app.post('/api/signals',requireAuth,requireTenant,requirePermission('signals:wri
     const entityIds=Array.isArray(req.body?.entityIds)?req.body.entityIds.map(String).slice(0,100):[];
     const result=await withTransaction(async tx=>{
       if(!(await claimIdempotency(tx,req.tenantId!,key)))return {duplicate:true,correlations:0};
-      await tx.query('INSERT INTO signals(id,tenant_id,type,severity,source,payload,entity_ids,lat,lon,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[id,req.tenantId,type,severity,String(req.body?.source||'unknown'),req.body?.payload||{},entityIds,lat,lon,occurredAt]);
+      await tx.query('INSERT INTO signals(id,tenant_id,type,severity,source,payload,entity_ids,lat,lon,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[id,req.tenantId,type,severity,String(req.body?.source||'unknown'),jsonb(req.body?.payload||{}),entityIds,lat,lon,occurredAt]);
       await tx.query('INSERT INTO semantic_fingerprints(id,tenant_id,signal_id,fingerprint) VALUES($1,$2,$3,$4)',[crypto.randomUUID(),req.tenantId,id,semanticKey({type,entityIds,lat,lon,occurredAt:occurredAt.toISOString()})]);
       const recent=(await tx.query('SELECT id,tenant_id AS "tenantId",type,severity,entity_ids AS "entityIds",lat,lon,occurred_at AS "occurredAt" FROM signals WHERE tenant_id=$1 AND occurred_at BETWEEN $2::timestamptz-interval \'30 minutes\' AND $2::timestamptz+interval \'30 minutes\' ORDER BY occurred_at,id',[req.tenantId,occurredAt])).rows;
       const patterns=(await tx.query('SELECT id,version,name,sequence,min_window_ms AS "minWindowMs",preferred_window_ms AS "preferredWindowMs",max_window_ms AS "maxWindowMs",weights,geo,min_confidence AS "minConfidence",enabled FROM pattern_definitions WHERE tenant_id=$1 AND enabled=true ORDER BY id,version DESC',[req.tenantId])).rows.map((p:any)=>({...p,minWindowMs:Number(p.minWindowMs),preferredWindowMs:Number(p.preferredWindowMs),maxWindowMs:Number(p.maxWindowMs)}));
@@ -79,13 +81,13 @@ app.post('/api/signals',requireAuth,requireTenant,requirePermission('signals:wri
       const correlations=correlate(recent,patterns.length?patterns:undefined,relationships);
       const predictions=generatePredictiveSignals(recent);
       for(const p of predictions){
-        await tx.query('INSERT INTO predictive_signals(id,tenant_id,target_type,target_value,horizon_ms,score,confidence,severity,factors,algorithm_version,generated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,target_type,target_value,horizon_ms,generated_at,algorithm_version) DO UPDATE SET score=EXCLUDED.score,confidence=EXCLUDED.confidence,severity=EXCLUDED.severity,factors=EXCLUDED.factors',[crypto.randomUUID(),req.tenantId,p.targetType,p.targetValue,p.horizonMs,p.score,p.confidence,p.severity,p.factors,PREDICTIVE_ALGORITHM_VERSION,p.generatedAt]);
+        await tx.query('INSERT INTO predictive_signals(id,tenant_id,target_type,target_value,horizon_ms,score,confidence,severity,factors,algorithm_version,generated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,target_type,target_value,horizon_ms,generated_at,algorithm_version) DO UPDATE SET score=EXCLUDED.score,confidence=EXCLUDED.confidence,severity=EXCLUDED.severity,factors=EXCLUDED.factors',[crypto.randomUUID(),req.tenantId,p.targetType,p.targetValue,p.horizonMs,p.score,p.confidence,p.severity,jsonb(p.factors),PREDICTIVE_ALGORITHM_VERSION,p.generatedAt]);
         await appendAudit(tx,{tenantId:req.tenantId!,actorId:req.actorId,action:'predictive_signal.generated',resourceType:'predictive_signal',resourceId:p.targetType,metadata:p});
       }
       const rules=(await tx.query('SELECT id,enabled,definition FROM rules WHERE tenant_id=$1 AND enabled=true',[req.tenantId])).rows.map((r:any)=>({id:r.id,enabled:r.enabled,definition:r.definition}));
       for(const correlation of correlations){
         const cid=crypto.randomUUID();
-        await tx.query('INSERT INTO correlations(id,tenant_id,score,confidence,severity,signal_ids,pattern_id,pattern_version,algorithm_version,reasons,explanation) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',[cid,req.tenantId,correlation.score,correlation.confidence,correlation.severity,correlation.signalIds,correlation.patternId,correlation.patternVersion,correlation.algorithmVersion,correlation.reasons,{factors:correlation.factors,sequence:correlation.sequence}]);
+        await tx.query('INSERT INTO correlations(id,tenant_id,score,confidence,severity,signal_ids,pattern_id,pattern_version,algorithm_version,reasons,explanation) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',[cid,req.tenantId,correlation.score,correlation.confidence,correlation.severity,correlation.signalIds,correlation.patternId,correlation.patternVersion,correlation.algorithmVersion,jsonb(correlation.reasons),jsonb({factors:correlation.factors,sequence:correlation.sequence})]);
         for(const factor of correlation.factors)await tx.query('INSERT INTO correlation_factors(correlation_id,tenant_id,factor_type,weight,evidence) VALUES($1,$2,$3,$4,$5)',[cid,req.tenantId,factor.type,factor.weight,factor.evidence]);
         const first=recent.find((s:any)=>s.id===correlation.signalIds[0])??recent[0];
         const preliminary=evaluatePolicies(rules,{signalType:first.type,severity:correlation.severity,score:correlation.score,entityIds:first.entityIds??[],ageMinutes:0});
@@ -95,7 +97,7 @@ app.post('/api/signals',requireAuth,requireTenant,requirePermission('signals:wri
         await tx.query('INSERT INTO risk_assessments(id,tenant_id,resource_type,resource_id,score,severity,reasons) VALUES($1,$2,$3,$4,$5,$6,$7)',[crypto.randomUUID(),req.tenantId,'correlation',cid,risk.score,risk.severity,[...risk.reasons,...policy.reasons]]);
         if(policy.shouldOpenCase){
           const caseId=crypto.randomUUID();
-          await tx.query('INSERT INTO cases(id,tenant_id,status,severity,correlation_id,title,metadata) VALUES($1,$2,\'open\',$3,$4,$5,$6)',[caseId,req.tenantId,risk.severity,`Sentinel incident ${risk.severity}`,{riskScore:risk.score,matchedRuleIds:policy.matchedRuleIds}]);
+          await tx.query('INSERT INTO cases(id,tenant_id,status,severity,correlation_id,title,metadata) VALUES($1,$2,\'open\',$3,$4,$5,$6)',[caseId,req.tenantId,risk.severity,`Sentinel incident ${risk.severity}`,jsonb({riskScore:risk.score,matchedRuleIds:policy.matchedRuleIds})]);
           if(policy.shouldAlert)for(const channel of policy.alertChannels){
             const alertId=crypto.randomUUID();
             await tx.query('INSERT INTO alerts(id,tenant_id,case_id,channel,status,payload) VALUES($1,$2,$3,$4,\'pending\',$5) ON CONFLICT(tenant_id,case_id,channel) DO UPDATE SET payload=EXCLUDED.payload',[alertId,req.tenantId,caseId,channel,{risk,correlationId:cid}]);
