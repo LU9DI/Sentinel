@@ -135,7 +135,16 @@ app.post('/api/pattern-learning/anomalies',requireAuth,requireTenant,requirePerm
 });
 
 app.post('/api/rules',requireAuth,requireTenant,requirePermission('rules:write'),async(req:TenantRequest,res)=>{
-  const name=String(req.body?.name||'');if(!name)return res.status(400).json({error:'name required'});const id=crypto.randomUUID();await pool.query('INSERT INTO rules(id,tenant_id,name,definition) VALUES($1,$2,$3,$4)',[id,req.tenantId,name,req.body?.definition||{}]);res.status(201).json({id,name});
+  try{
+    const name=String(req.body?.name||'');
+    if(!name)return res.status(400).json({error:'name required'});
+    const id=crypto.randomUUID();
+    await withTransaction(async tx=>{
+      await tx.query('INSERT INTO rules(id,tenant_id,name,definition) VALUES($1,$2,$3,$4)',[id,req.tenantId,name,req.body?.definition||{}]);
+      await appendAudit(tx,{tenantId:req.tenantId!,actorId:req.actorId,action:'rule.created',resourceType:'rule',resourceId:id,metadata:{name,definition:req.body?.definition||{}}});
+    });
+    res.status(201).json({id,name});
+  }catch(e){res.status(400).json({error:e instanceof Error?e.message:'rule creation failed'});}
 });
 app.get('/api/rules',requireAuth,requireTenant,requirePermission('rules:read'),async(req:TenantRequest,res)=>{const r=await pool.query('SELECT id,name,enabled,definition FROM rules WHERE tenant_id=$1 ORDER BY created_at DESC',[req.tenantId]);res.json({items:r.rows});});
 
