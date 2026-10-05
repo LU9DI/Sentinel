@@ -113,7 +113,17 @@ app.post('/api/signals',requireAuth,requireTenant,requirePermission('signals:wri
     });
     if(result.duplicate)return res.status(200).json(result);
     res.status(201).json(result);
-  }catch(e){res.status(400).json({error:e instanceof Error?e.message:'signal ingestion failed'});}
+  }catch(e){
+    const error=e as {message?:string;code?:string;detail?:string;hint?:string;position?:string};
+    console.error('signal ingestion failed',error);
+    res.status(400).json({
+      error:error?.message||'signal ingestion failed',
+      ...(error?.code?{code:error.code}:{}),
+      ...(error?.detail?{detail:error.detail}:{}),
+      ...(error?.hint?{hint:error.hint}:{}),
+      ...(error?.position?{position:error.position}:{})
+    });
+  }
 });
 
 app.get('/api/signals',requireAuth,requireTenant,requirePermission('signals:read'),async(req:TenantRequest,res)=>{
