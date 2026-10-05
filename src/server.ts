@@ -94,7 +94,7 @@ app.post('/api/signals',requireAuth,requireTenant,requirePermission('signals:wri
         const predictiveScore=Math.max(0,...predictions.filter(p=>correlation.sequence.includes(p.targetType)).map(p=>p.score*p.confidence));
         const risk=assessRisk({correlationScore:correlation.score,signalSeverity:correlation.severity,matchingRules:preliminary.matchedRuleIds.length,signalCount:correlation.signalIds.length,predictiveScore});
         const policy=evaluatePolicies(rules,{signalType:first.type,severity:risk.severity,score:risk.score,entityIds:first.entityIds??[],ageMinutes:0});
-        await tx.query('INSERT INTO risk_assessments(id,tenant_id,resource_type,resource_id,score,severity,reasons) VALUES($1,$2,$3,$4,$5,$6,$7)',[crypto.randomUUID(),req.tenantId,'correlation',cid,risk.score,risk.severity,[...risk.reasons,...policy.reasons]]);
+        await tx.query('INSERT INTO risk_assessments(id,tenant_id,resource_type,resource_id,score,severity,reasons) VALUES($1,$2,$3,$4,$5,$6,$7)',[crypto.randomUUID(),req.tenantId,'correlation',cid,risk.score,risk.severity,jsonb([...risk.reasons,...policy.reasons])]);
         if(policy.shouldOpenCase){
           const caseId=crypto.randomUUID();
           await tx.query('INSERT INTO cases(id,tenant_id,status,severity,correlation_id,title,metadata) VALUES($1,$2,\'open\',$3,$4,$5,$6)',[caseId,req.tenantId,risk.severity,`Sentinel incident ${risk.severity}`,jsonb({riskScore:risk.score,matchedRuleIds:policy.matchedRuleIds})]);
