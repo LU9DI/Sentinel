@@ -18,6 +18,7 @@ import { enqueueOutbox } from './infra/outbox.js';
 import { normalizeRelationship } from './domain/entityGraph.js';
 import { detectVolumeAnomalies } from './domain/patternLearning.js';
 import patternLearningRouter from './routes/patternLearningRoutes.js';
+import integrationRouter from './routes/integrationRoutes.js';
 import { generatePredictiveSignals, PREDICTIVE_ALGORITHM_VERSION } from './domain/predictiveRisk.js';
 
 const app=express();
@@ -26,6 +27,7 @@ app.use(express.json({limit:'1mb'}));
 app.use(rateLimit({windowMs:60_000,max:300,standardHeaders:true,legacyHeaders:false}));
 
 app.get('/api/health',(_,res)=>res.json({ok:true,service:'horus-sentinel-ai'}));
+app.use('/api/integrations', integrationRouter);
 app.use('/api/pattern-learning', patternLearningRouter);
 
 app.get('/api/audit/integrity',requireAuth,requireTenant,requirePermission('audit:read'),async(req:TenantRequest,res)=>{
