@@ -3,22 +3,13 @@ import { Pool, PoolClient } from 'pg';
 function validateDatabaseUrl(raw: string | undefined): string {
   if (!raw) throw new Error('DATABASE_URL is required. Copy the PostgreSQL connection string from Supabase into .env.');
   let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new Error('DATABASE_URL is not a valid PostgreSQL connection string.');
-  }
-  if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
-    throw new Error('DATABASE_URL must use postgres:// or postgresql://.');
-  }
+  try { url = new URL(raw); } catch { throw new Error('DATABASE_URL is not a valid PostgreSQL connection string.'); }
+  if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('DATABASE_URL must use postgres:// or postgresql://.');
   const host = url.hostname.toLowerCase();
-  const placeholders = new Set(['host', 'your-host', 'localhost-placeholder', 'example.com']);
-  if (placeholders.has(host) || host.includes('your-host') || host.includes('your_host')) {
+  if (host === 'host' || host.includes('your-host') || host.includes('your_host')) {
     throw new Error('DATABASE_URL still contains a placeholder host. Replace HOST with the real Supabase PostgreSQL host.');
   }
-  if (!url.username || !url.password) {
-    throw new Error('DATABASE_URL must include the PostgreSQL username and password.');
-  }
+  if (!url.username || !url.password) throw new Error('DATABASE_URL must include the PostgreSQL username and password.');
   return raw;
 }
 
