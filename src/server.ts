@@ -97,7 +97,7 @@ app.post('/api/signals',requireAuth,requireTenant,requirePermission('signals:wri
         await tx.query('INSERT INTO risk_assessments(id,tenant_id,resource_type,resource_id,score,severity,reasons) VALUES($1,$2,$3,$4,$5,$6,$7)',[crypto.randomUUID(),req.tenantId,'correlation',cid,risk.score,risk.severity,jsonb([...risk.reasons,...policy.reasons])]);
         if(policy.shouldOpenCase){
           const caseId=crypto.randomUUID();
-          await tx.query('INSERT INTO cases(id,tenant_id,status,severity,correlation_id,title,metadata) VALUES($1,$2,\'open\',$3,$4,$5)',[caseId,req.tenantId,risk.severity,`Sentinel incident ${risk.severity}`,jsonb({riskScore:risk.score,matchedRuleIds:policy.matchedRuleIds})]);
+          await tx.query('INSERT INTO cases(id,tenant_id,status,severity,correlation_id,title,metadata) VALUES($1,$2,\'open\',$3,$4,$5,$6)',[caseId,req.tenantId,risk.severity,cid,`Sentinel incident ${risk.severity}`,jsonb({riskScore:risk.score,matchedRuleIds:policy.matchedRuleIds})]);
           if(policy.shouldAlert)for(const channel of policy.alertChannels){
             const alertId=crypto.randomUUID();
             await tx.query('INSERT INTO alerts(id,tenant_id,case_id,channel,status,payload) VALUES($1,$2,$3,$4,\'pending\',$5) ON CONFLICT(tenant_id,case_id,channel) DO UPDATE SET payload=EXCLUDED.payload',[alertId,req.tenantId,caseId,channel,jsonb({risk,correlationId:cid})]);
