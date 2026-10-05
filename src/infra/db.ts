@@ -156,7 +156,7 @@ export async function migrate(){
         END IF;
         RETURN NEW;
       END;
-      $func$ LANGUAGE plpgsql`,
+      $func$ LANGUAGE plpgsql SET search_path = pg_catalog`,
     `CREATE OR REPLACE FUNCTION prevent_active_pattern_delete()
       RETURNS trigger AS $func$
       BEGIN
@@ -165,7 +165,7 @@ export async function migrate(){
         END IF;
         RETURN OLD;
       END;
-      $func$ LANGUAGE plpgsql`,
+      $func$ LANGUAGE plpgsql SET search_path = pg_catalog`,
     `CREATE OR REPLACE FUNCTION prevent_direct_pattern_activation()
       RETURNS trigger AS $func$
       BEGIN
@@ -174,7 +174,7 @@ export async function migrate(){
         END IF;
         RETURN NEW;
       END;
-      $func$ LANGUAGE plpgsql`,
+      $func$ LANGUAGE plpgsql SET search_path = pg_catalog`,
     `CREATE OR REPLACE FUNCTION guard_pattern_activation()
       RETURNS trigger AS $func$
       BEGIN
@@ -184,7 +184,7 @@ export async function migrate(){
         END IF;
         RETURN NEW;
       END;
-      $func$ LANGUAGE plpgsql`,
+      $func$ LANGUAGE plpgsql SET search_path = pg_catalog`,
     `DROP TRIGGER IF EXISTS pattern_definitions_activation_guard_trg ON pattern_definitions`,
     `CREATE TRIGGER pattern_definitions_activation_guard_trg BEFORE UPDATE ON pattern_definitions FOR EACH ROW EXECUTE FUNCTION guard_pattern_activation()`,
     `DROP TRIGGER IF EXISTS pattern_definitions_active_immutability_trg ON pattern_definitions`,
@@ -200,12 +200,10 @@ export async function migrate(){
   // The original single-column FKs remain valid, while these composite FKs prevent
   // a row from tenant A from referencing a resource owned by tenant B.
   const tenantIsolation = [
-    "CREATE UNIQUE INDEX IF NOT EXISTS entity_nodes_tenant_id_uq ON entity_nodes(tenant_id,id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS signals_tenant_id_uq ON signals(tenant_id,id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS correlations_tenant_id_uq ON correlations(tenant_id,id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS cases_tenant_id_uq ON cases(tenant_id,id)",
     "CREATE UNIQUE INDEX IF NOT EXISTS alerts_tenant_id_uq ON alerts(tenant_id,id)",
-    "CREATE UNIQUE INDEX IF NOT EXISTS pattern_definitions_tenant_id_uq ON pattern_definitions(tenant_id,id,version)",
     "CREATE UNIQUE INDEX IF NOT EXISTS audit_events_tenant_sequence_uq ON audit_events(tenant_id,sequence)",
     `DO $$ BEGIN
       ALTER TABLE entity_relationships
@@ -254,4 +252,7 @@ export async function migrate(){
     EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
   ];
   for(const statement of tenantIsolation) await pool.query(statement);
+  // Remove redundant indexes left by earlier tenant-isolation iterations.
+  await pool.query('DROP INDEX IF EXISTS entity_nodes_tenant_id_uq');
+  await pool.query('DROP INDEX IF EXISTS pattern_definitions_tenant_id_uq');
 }
