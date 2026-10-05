@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { migrate, pool, withTransaction } from './infra/db.js';
 import { claimsFromMembership, requireAuth, signToken, requirePermission, verifyBootstrapToken } from './infra/auth.js';
 import { requireTenant, type TenantRequest } from './middleware/tenant.js';
-import { appendAudit } from './infra/audit.js';
+import { appendAudit, verifyAuditChain } from './infra/audit.js';
 import { claimIdempotency } from './infra/idempotency.js';
 import { normalizeSeverity, normalizeSignalType, boundedNumber } from './domain/sentinelValidation.js';
 import { correlate } from './domain/correlationEngine.js';
@@ -16,7 +16,8 @@ import { semanticKey, semanticSimilarity } from './domain/semanticDedup.js';
 import { evolveRisk, shouldEscalate } from './domain/riskEvolution.js';
 import { enqueueOutbox } from './infra/outbox.js';
 import { normalizeRelationship } from './domain/entityGraph.js';
-import { discoverPatternCandidates, detectVolumeAnomalies, candidateToPattern } from './domain/patternLearning.js';
+import { detectVolumeAnomalies } from './domain/patternLearning.js';
+import patternLearningRouter from './routes/patternLearningRoutes.js';
 import { generatePredictiveSignals, PREDICTIVE_ALGORITHM_VERSION } from './domain/predictiveRisk.js';
 
 const app=express();
@@ -25,6 +26,16 @@ app.use(express.json({limit:'1mb'}));
 app.use(rateLimit({windowMs:60_000,max:300,standardHeaders:true,legacyHeaders:false}));
 
 app.get('/api/health',(_,res)=>res.json({ok:true,service:'horus-sentinel-ai'}));
+app.use('/api/pattern-learning', patternLearningRouter);
+
+app.get('/api/audit/integrity',requireAuth,requireTenant,requirePermission('audit:read'),async(req:TenantRequest,res)=>{
+  try{
+    const result=await withTransaction(async tx=>verifyAuditChain(tx,req.tenantId!));
+    res.status(result.valid?200:409).json(result);
+  }catch(e){
+    res.status(503).json({error:e instanceof Error?e.message:'audit integrity verification unavailable'});
+  }
+});
 
 app.post('/api/auth/token',async(req,res)=>{
   try{
@@ -41,7 +52,7 @@ app.post('/api/auth/token',async(req,res)=>{
     const rawPermissions=membership.rows[0].permissions;
     const permissions=Array.isArray(rawPermissions)?rawPermissions.map(String):[];
     const claims=claimsFromMembership({sub,tenantId,membership:{role:String(membership.rows[0].role),permissions}});
-    await appendAudit(pool,{tenantId,actorId:sub,action:'auth.token_issued',resourceType:'user',resourceId:sub,metadata:{role:claims.role,permissionCount:claims.permissions.length}});
+    await withTransaction(async tx=>appendAudit(tx,{tenantId,actorId:sub,action:'auth.token_issued',resourceType:'user',resourceId:sub,metadata:{role:claims.role,permissionCount:claims.permissions.length}}));
     res.json({token:signToken(claims)});
   }catch(e){res.status(503).json({error:e instanceof Error?e.message:'authentication unavailable'});}
 });
@@ -114,13 +125,8 @@ app.get('/api/correlations',requireAuth,requireTenant,requirePermission('correla
 });
 
 app.post('/api/entities/relationships',requireAuth,requireTenant,requirePermission('signals:write'),async(req:TenantRequest,res)=>{
-  try{const relationship=normalizeRelationship({...req.body,tenantId:req.tenantId!});const id=crypto.randomUUID();await pool.query('INSERT INTO entity_relationships(id,tenant_id,from_entity_id,to_entity_id,relation_type,strength,valid_from,valid_to) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id,req.tenantId,relationship.fromEntityId,relationship.toEntityId,relationship.relationType,relationship.strength,relationship.validFrom??null,relationship.validTo??null]);await appendAudit(pool,{tenantId:req.tenantId!,actorId:req.actorId,action:'entity_relationship.created',resourceType:'entity_relationship',resourceId:id,metadata:relationship});res.status(201).json({id,...relationship});}
+  try{const relationship=normalizeRelationship({...req.body,tenantId:req.tenantId!});const id=crypto.randomUUID();await withTransaction(async tx=>{await tx.query('INSERT INTO entity_relationships(id,tenant_id,from_entity_id,to_entity_id,relation_type,strength,valid_from,valid_to) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id,req.tenantId,relationship.fromEntityId,relationship.toEntityId,relationship.relationType,relationship.strength,relationship.validFrom??null,relationship.validTo??null]);await appendAudit(tx,{tenantId:req.tenantId!,actorId:req.actorId,action:'entity_relationship.created',resourceType:'entity_relationship',resourceId:id,metadata:relationship});});res.status(201).json({id,...relationship});}
   catch(e){res.status(400).json({error:e instanceof Error?e.message:'invalid relationship'});}
-});
-
-app.post('/api/pattern-learning/discover',requireAuth,requireTenant,requirePermission('risk:write'),async(req:TenantRequest,res)=>{
-  const signals=(await pool.query('SELECT id,tenant_id AS "tenantId",type,severity,entity_ids AS "entityIds",lat,lon,occurred_at AS "occurredAt" FROM signals WHERE tenant_id=$1 ORDER BY occurred_at ASC LIMIT 5000',[req.tenantId])).rows;
-  const candidates=discoverPatternCandidates(signals);res.json({algorithmVersion:'sentinel-learning-v11.1',candidates});
 });
 
 app.post('/api/pattern-learning/anomalies',requireAuth,requireTenant,requirePermission('risk:write'),async(req:TenantRequest,res)=>{
