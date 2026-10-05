@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 
 const databaseUrl = process.env.DATABASE_URL;
 const bootstrapToken = process.env.HORUS_BOOTSTRAP_TOKEN;
-const port = 5123;
+const port = 5123; // dedicated CI integration port
 const baseUrl = `http://127.0.0.1:${port}`;
 
 test('real DB path enforces correlation -> risk -> policy -> case -> alert -> outbox', async () => {
