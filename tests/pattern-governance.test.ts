@@ -6,7 +6,7 @@ test('pattern learning has explicit governance lifecycle endpoints', () => {
   const source = fs.readFileSync(new URL('../src/routes/patternLearningRoutes.ts', import.meta.url), 'utf8');
   for (const marker of [
     "previousStatus !== 'pending' && previousStatus !== 'review'",
-    "status !== 'approved'",
+    "candidate must be approved before promotion",
     "enabled: false",
     "pattern_definition.activated",
     "explicitActivation: true",
