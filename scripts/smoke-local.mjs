@@ -25,7 +25,10 @@ const auth=await request('/api/auth/token',{
   body:JSON.stringify({tenantId,userId}),
 });
 if(!auth.token) throw new Error('Token was not returned');
-const authHeaders={authorization:`Bearer ${auth.token}`};
+const authHeaders={
+  authorization:`Bearer ${auth.token}`,
+  'x-tenant-id':tenantId,
+};
 
 console.log('3/6 create smoke rule');
 await request('/api/rules',{
