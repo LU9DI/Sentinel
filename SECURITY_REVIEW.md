@@ -20,4 +20,4 @@ The existing `.gitignore` excludes `node_modules`, `dist`, and `.env`, but does 
 
 ## Not claimed
 
-The dependency alert API was not available through the connected repository interface in this review. No claim of zero dependency vulnerabilities or completed penetration testing is made. Tests were not executed as part of this static review.
+The new CI audit completed successfully and `npm audit --audit-level=high` reported **0 vulnerabilities** for the dependency tree resolved in that run. The repository still lacks a committed lockfile, so this is not yet a reproducible dependency baseline. The updated CI passed after two brittle source-text assertions were made whitespace-tolerant. No penetration test was performed.
