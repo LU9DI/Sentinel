@@ -123,9 +123,15 @@ test('audit chain exposes deterministic integrity verification', () => {
     'sequence is not strictly increasing',
     'previous_hash does not match the preceding event hash',
     'stored hash does not match the canonical event payload',
-    'const expectedHash=auditHash',
-    'return {valid:true,tenantId,eventCount',
-  ]) assert.ok(audit.includes(marker), `missing audit integrity marker: ${marker}`);
+  ]) {
+    if (marker === 'const expectedHash=auditHash') {
+      assert.match(audit, /const\s+expectedHash\s*=\s*auditHash/);
+    } else if (marker === 'return {valid:true,tenantId,eventCount') {
+      assert.match(audit, /return\s*\{\s*valid:\s*true,\s*tenantId,\s*eventCount/);
+    } else {
+      assert.ok(audit.includes(marker), `missing audit integrity marker: ${marker}`);
+    }
+  }
 });
 
 test('audit append and verification share one canonical hash function', () => {
@@ -138,8 +144,8 @@ test('audit append and verification share one canonical hash function', () => {
 
 test('audit verification does not require contiguous global sequence numbers', () => {
   const audit = fs.readFileSync(new URL('../src/infra/audit.ts', import.meta.url), 'utf8');
-  assert.ok(audit.includes('event.sequence<=previousSequence'));
-  assert.ok(!audit.includes('event.sequence!==previousSequence+1'));
+  assert.match(audit, /currentSequence\s*<=\s*previousSequence/);
+  assert.doesNotMatch(audit, /currentSequence\s*!==\s*previousSequence\s*\+\s*1/);
 });
 
 
