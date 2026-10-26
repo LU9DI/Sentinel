@@ -123,6 +123,8 @@ test('audit chain exposes deterministic integrity verification', () => {
     'sequence is not strictly increasing',
     'previous_hash does not match the preceding event hash',
     'stored hash does not match the canonical event payload',
+    'const expectedHash=auditHash',
+    'return {valid:true,tenantId,eventCount',
   ]) {
     if (marker === 'const expectedHash=auditHash') {
       assert.match(audit, /const\s+expectedHash\s*=\s*auditHash/);
