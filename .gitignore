@@ -2,3 +2,16 @@ node_modules
 dist
 .env
 *.log
+
+# Test/build output
+coverage/
+.nyc_output/
+*.tsbuildinfo
+*.log
+*.local
+
+# Local IDE/OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
