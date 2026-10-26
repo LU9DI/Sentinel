@@ -6,3 +6,7 @@
 - Do not weaken detection thresholds or suppress findings solely to make CI pass; document false-positive/false-negative trade-offs.
 - Keep audit records reproducible and avoid logging credentials or sensitive payloads.
 - Follow `.agents/skills/verification-gates/SKILL.md` and `.agents/skills/security-policy-validation/SKILL.md`.
+
+
+## Additional API security skill routing
+- Authentication, tenant authorization, API regression tests, or webhook verification: read .agents/skills/api-auth-test-review/SKILL.md.
